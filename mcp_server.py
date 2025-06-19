@@ -439,5 +439,101 @@ async def get_project_summary() -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Error generating project summary from Snowflake: {str(e)}"}
 
+@mcp.tool()
+async def list_components(
+    project: Optional[str] = None,
+    archived: Optional[str] = None,
+    deleted: Optional[str] = None,
+    limit: int = 50,
+    search_text: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    List JIRA components from Snowflake with optional filtering.
+    
+    Args:
+        project: Filter by project ID (e.g., '12325621')
+        archived: Filter by archived status ('Y' or 'N')
+        deleted: Filter by deleted status ('Y' or 'N')
+        limit: Maximum number of components to return (default: 50)
+        search_text: Search in component name and description fields
+    
+    Returns:
+        Dictionary containing components list and metadata
+    """
+    try:
+        # Build SQL query with filters
+        sql_conditions = []
+        
+        if project:
+            sql_conditions.append(f"PROJECT = '{sanitize_sql_value(project)}'")
+        
+        if archived:
+            sql_conditions.append(f"ARCHIVED = '{sanitize_sql_value(archived.upper())}'")
+            
+        if deleted:
+            sql_conditions.append(f"DELETED = '{sanitize_sql_value(deleted.upper())}'")
+        
+        if search_text:
+            search_condition = f"(LOWER(CNAME) LIKE '%{sanitize_sql_value(search_text.lower())}%' OR LOWER(DESCRIPTION) LIKE '%{sanitize_sql_value(search_text.lower())}%')"
+            sql_conditions.append(search_condition)
+        
+        where_clause = ""
+        if sql_conditions:
+            where_clause = "WHERE " + " AND ".join(sql_conditions)
+        
+        sql = f"""
+        SELECT 
+            ID, PROJECT, CNAME, DESCRIPTION, URL, LEAD, 
+            ASSIGNEETYPE, ARCHIVED, DELETED, _FIVETRAN_SYNCED
+        FROM JIRA_COMPONENT_RHAI 
+        {where_clause}
+        ORDER BY CNAME ASC
+        LIMIT {limit}
+        """
+        
+        rows = await execute_snowflake_query(sql)
+        
+        components = []
+        
+        # Expected column order based on SELECT statement
+        columns = [
+            "ID", "PROJECT", "CNAME", "DESCRIPTION", "URL", "LEAD",
+            "ASSIGNEETYPE", "ARCHIVED", "DELETED", "_FIVETRAN_SYNCED"
+        ]
+        
+        for row in rows:
+            row_dict = format_snowflake_row(row, columns)
+            
+            # Build component object
+            component = {
+                "id": row_dict.get("ID"),
+                "project": row_dict.get("PROJECT"),
+                "name": row_dict.get("CNAME"),
+                "description": row_dict.get("DESCRIPTION") or "",
+                "url": row_dict.get("URL"),
+                "lead": row_dict.get("LEAD"),
+                "assignee_type": row_dict.get("ASSIGNEETYPE"),
+                "archived": row_dict.get("ARCHIVED"),
+                "deleted": row_dict.get("DELETED"),
+                "synced": row_dict.get("_FIVETRAN_SYNCED")
+            }
+            
+            components.append(component)
+        
+        return {
+            "components": components,
+            "total_returned": len(components),
+            "filters_applied": {
+                "project": project,
+                "archived": archived,
+                "deleted": deleted,
+                "search_text": search_text,
+                "limit": limit
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Error reading components from Snowflake: {str(e)}", "components": []}
+
 if __name__ == "__main__":
     mcp.run(transport=MCP_TRANSPORT)
