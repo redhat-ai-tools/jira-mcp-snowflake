@@ -439,5 +439,100 @@ async def get_project_summary() -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Error generating project summary from Snowflake: {str(e)}"}
 
+async def _get_issue_comments(issue_id: str) -> List[Dict[str, Any]]:
+    """Get comments for a given issue ID from Snowflake"""
+    if not issue_id:
+        return []
+    
+    comments = []
+    
+    try:
+        # Sanitize and validate issue ID (should be numeric)
+        if not str(issue_id).isdigit():
+            return []
+        
+        # The comment CSV structure appears to use the ID field as the issue reference
+        # Based on the CSV structure: ID,ROLELEVEL,BODY,CREATED,UPDATED,LOAD_DTTM
+        # We'll search for comments where the ID matches the issue ID
+        sql = f"""
+        SELECT ID, ROLELEVEL, BODY, CREATED, UPDATED, LOAD_DTTM
+        FROM JIRA_COMMENT_NON_PII 
+        WHERE ID = '{sanitize_sql_value(str(issue_id))}'
+        ORDER BY CREATED ASC
+        """
+        
+        rows = await execute_snowflake_query(sql)
+        columns = ["ID", "ROLELEVEL", "BODY", "CREATED", "UPDATED", "LOAD_DTTM"]
+        
+        for row in rows:
+            row_dict = format_snowflake_row(row, columns)
+            
+            comment = {
+                "comment_id": row_dict.get("ID"),  # This might be the issue ID acting as comment reference
+                "role_level": row_dict.get("ROLELEVEL"),
+                "body": row_dict.get("BODY", ""),
+                "created": row_dict.get("CREATED"),
+                "updated": row_dict.get("UPDATED"),
+                "load_timestamp": row_dict.get("LOAD_DTTM")
+            }
+            comments.append(comment)
+    
+    except Exception as e:
+        logger.error(f"Error fetching comments: {str(e)}")
+    
+    return comments
+
+@mcp.tool()
+async def get_issue_comments(issue_key: str) -> Dict[str, Any]:
+    """
+    Get comments for a specific JIRA issue by its key from Snowflake.
+    
+    Note: This function assumes that comments are linked to issues through the ID field.
+    If no comments are found, it may indicate that:
+    1. The issue has no comments
+    2. The comment-to-issue relationship uses a different structure
+    3. Comments might be stored in a separate relationship table
+    
+    Args:
+        issue_key: The JIRA issue key (e.g., 'SMQE-1280')
+    
+    Returns:
+        Dictionary containing comments for the issue
+    """
+    try:
+        # First, get the issue ID from the issue key
+        sql = f"""
+        SELECT ID, ISSUE_KEY
+        FROM JIRA_ISSUE_NON_PII 
+        WHERE ISSUE_KEY = '{sanitize_sql_value(issue_key)}'
+        LIMIT 1
+        """
+        
+        rows = await execute_snowflake_query(sql)
+        
+        if not rows:
+            return {"error": f"Issue with key '{issue_key}' not found"}
+        
+        issue_id = rows[0][0]  # Get the ID from the first row
+        
+        # Get comments for this issue
+        comments = await _get_issue_comments(str(issue_id))
+        
+        result = {
+            "issue_key": issue_key,
+            "issue_id": issue_id,
+            "comments": comments,
+            "total_comments": len(comments)
+        }
+        
+        # Add a note if no comments were found
+        if len(comments) == 0:
+            result["note"] = "No comments found. This could mean: (1) the issue has no comments, (2) comments use a different linking structure, or (3) comment data is stored elsewhere."
+        
+        return result
+        
+    except Exception as e:
+        return {"error": f"Error retrieving comments from Snowflake: {str(e)}"}
+
 if __name__ == "__main__":
     mcp.run(transport=MCP_TRANSPORT)
