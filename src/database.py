@@ -171,4 +171,57 @@ async def get_issue_labels(issue_ids: List[str], snowflake_token: Optional[str] 
     except Exception as e:
         logger.error(f"Error fetching labels: {str(e)}")
     
-    return labels_data 
+    return labels_data
+
+async def get_issue_comments(issue_ids: List[str], snowflake_token: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """Get comments for given issue IDs from Snowflake"""
+    if not issue_ids:
+        return {}
+    
+    comments_data = {}
+    
+    try:
+        # Sanitize and validate issue IDs (should be numeric)
+        sanitized_ids = []
+        for issue_id in issue_ids:
+            # Ensure issue IDs are numeric to prevent injection
+            if isinstance(issue_id, (str, int)) and str(issue_id).isdigit():
+                sanitized_ids.append(str(issue_id))
+        
+        if not sanitized_ids:
+            return {}
+        
+        # Create comma-separated list for IN clause
+        ids_str = "'" + "','".join(sanitized_ids) + "'"
+        
+        sql = f"""
+        SELECT ID, ISSUEID, ROLELEVEL, BODY, CREATED, UPDATED
+        FROM JIRA_COMMENT_NON_PII 
+        WHERE ISSUEID IN ({ids_str}) AND BODY IS NOT NULL
+        ORDER BY ISSUEID, CREATED ASC
+        """
+        
+        rows = await execute_snowflake_query(sql, snowflake_token)
+        columns = ["ID", "ISSUEID", "ROLELEVEL", "BODY", "CREATED", "UPDATED"]
+        
+        for row in rows:
+            row_dict = format_snowflake_row(row, columns)
+            issue_id = str(row_dict.get("ISSUEID"))
+            
+            if issue_id:
+                if issue_id not in comments_data:
+                    comments_data[issue_id] = []
+                
+                comment = {
+                    "id": row_dict.get("ID"),
+                    "role_level": row_dict.get("ROLELEVEL"),
+                    "body": row_dict.get("BODY"),
+                    "created": row_dict.get("CREATED"),
+                    "updated": row_dict.get("UPDATED")
+                }
+                comments_data[issue_id].append(comment)
+    
+    except Exception as e:
+        logger.error(f"Error fetching comments: {str(e)}")
+    
+    return comments_data 

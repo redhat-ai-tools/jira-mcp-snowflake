@@ -8,7 +8,8 @@ from database import (
     execute_snowflake_query,
     format_snowflake_row,
     sanitize_sql_value,
-    get_issue_labels
+    get_issue_labels,
+    get_issue_comments
 )
 from metrics import track_tool_usage
 
@@ -183,7 +184,7 @@ def register_tools(mcp: FastMCP) -> None:
             issue_key: The JIRA issue key (e.g., 'SMQE-1280')
         
         Returns:
-            Dictionary containing detailed issue information
+            Dictionary containing detailed issue information including comments
         """
         try:
             # Get the Snowflake token
@@ -251,6 +252,10 @@ def register_tools(mcp: FastMCP) -> None:
             # Get labels for this issue
             labels_data = await get_issue_labels([str(issue['id'])], snowflake_token)
             issue['labels'] = labels_data.get(str(issue['id']), [])
+            
+            # Get comments for this issue
+            comments_data = await get_issue_comments([str(issue['id'])], snowflake_token)
+            issue['comments'] = comments_data.get(str(issue['id']), [])
             
             return issue
             

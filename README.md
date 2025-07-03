@@ -6,9 +6,9 @@ A Model Context Protocol (MCP) server that provides access to JIRA issue data st
 
 This MCP server connects to Snowflake to query JIRA data and provides three main tools for interacting with the data:
 
-- **`list_issues`** - Query and filter JIRA issues with various criteria
-- **`get_issue_details`** - Get detailed information for a specific issue by key
-- **`get_project_summary`** - Get statistics and summaries for all projects
+- **`list_jira_issues`** - Query and filter JIRA issues with various criteria
+- **`get_jira_issue_details`** - Get detailed information for a specific issue by key
+- **`get_jira_project_summary`** - Get statistics and summaries for all projects
 
 ## Features
 
@@ -16,12 +16,13 @@ This MCP server connects to Snowflake to query JIRA data and provides three main
 The server connects to Snowflake and queries the following tables:
 - `JIRA_ISSUE_NON_PII` - Main issue data (non-personally identifiable information)
 - `JIRA_LABEL_RHAI` - Issue labels and tags
+- `JIRA_COMMENT_NON_PII` - Issue comments (non-personally identifiable information)
 
 **Note**: Table names are expected to exist in your configured Snowflake database and schema.
 
 ### Available Tools
 
-#### 1. List Issues (`list_issues`)
+#### 1. List Issues (`list_jira_issues`)
 Query JIRA issues with optional filtering:
 - **Project filtering** - Filter by project key (e.g., 'SMQE', 'OSIM')
 - **Issue type filtering** - Filter by issue type ID
@@ -30,15 +31,16 @@ Query JIRA issues with optional filtering:
 - **Text search** - Search in summary and description fields
 - **Result limiting** - Control number of results returned (default: 50)
 
-#### 2. Get Issue Details (`get_issue_details`)
+#### 2. Get Issue Details (`get_jira_issue_details`)
 Retrieve comprehensive information for a specific JIRA issue by its key (e.g., 'SMQE-1280'), including:
 - Basic issue information (summary, description, status, priority)
 - Timestamps (created, updated, due date, resolution date)
 - Time tracking (original estimate, current estimate, time spent)
 - Metadata (votes, watches, environment, components)
 - Associated labels
+- Comments (with comment body, creation/update timestamps, and role level)
 
-#### 3. Get Project Summary (`get_project_summary`)
+#### 3. Get Project Summary (`get_jira_project_summary`)
 Generate statistics across all projects:
 - Total issue counts per project
 - Status distribution per project
@@ -206,25 +208,25 @@ Example configuration to add to VS Code Continue:
 ### Query Issues by Project
 ```python
 # List all issues from the SMQE project
-result = await list_issues(project="SMQE", limit=10)
+result = await list_jira_issues(project="SMQE", limit=10)
 ```
 
 ### Search Issues by Text
 ```python
 # Search for issues containing "authentication" in summary or description
-result = await list_issues(search_text="authentication", limit=20)
+result = await list_jira_issues(search_text="authentication", limit=20)
 ```
 
 ### Get Specific Issue Details
 ```python
 # Get detailed information for a specific issue
-result = await get_issue_details(issue_key="SMQE-1280")
+result = await get_jira_issue_details(issue_key="SMQE-1280")
 ```
 
 ### Get Project Overview
 ```python
 # Get statistics for all projects
-result = await get_project_summary()
+result = await get_jira_project_summary()
 ```
 
 ## Monitoring
