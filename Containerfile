@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/python-311
+FROM registry.access.redhat.com/ubi9/python-311 AS BASE
 
 WORKDIR /app
 
@@ -13,6 +13,12 @@ COPY README.md ./
 # Copy application files (needed for editable install)
 COPY ./src/ ./src/
 
+FROM BASE AS LINTER
+# tint testing 
+RUN uv sync && \
+    uv run flake8 src/ --max-line-length=120 --ignore=E501,W503
+
+FROM LINTER AS FINAL
 # Install dependencies using UV
 RUN uv sync --no-dev
 # Environment variables (set these when running the container)
