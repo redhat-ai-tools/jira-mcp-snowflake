@@ -30,7 +30,8 @@ METRICS_PORT = int(os.environ.get("METRICS_PORT", "8000"))
 
 # Check if Prometheus is available
 try:
-    from prometheus_client import Counter, Histogram, Gauge, CONTENT_TYPE_LATEST, generate_latest
+    # These imports are used in metrics.py
+    from prometheus_client import Counter, Histogram, Gauge, CONTENT_TYPE_LATEST, generate_latest  # noqa: F401
     PROMETHEUS_AVAILABLE = True
 except ImportError:
-    PROMETHEUS_AVAILABLE = False 
+    PROMETHEUS_AVAILABLE = False

@@ -17,17 +17,18 @@ from tools import register_tools
 # Get logger
 logger = logging.getLogger(__name__)
 
+
 def main():
     """Main entry point for the MCP server"""
     # Initialize FastMCP server
     mcp = FastMCP("jira-mcp-snowflake")
-    
+
     # Register all tools
     register_tools(mcp)
-    
+
     # Start metrics server in background thread if enabled
     start_metrics_thread()
-    
+
     # Run the MCP server
     try:
         logger.info("Starting JIRA MCP Server for Snowflake")
@@ -41,6 +42,7 @@ def main():
         # Clean up metrics
         set_active_connections(0)
         logger.info("MCP server shutdown complete")
+
 
 if __name__ == "__main__":
     main()

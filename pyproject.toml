@@ -21,4 +21,6 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.uv]
-dev-dependencies = [] 
+dev-dependencies = [
+    "flake8>=7.3.0",
+] 
