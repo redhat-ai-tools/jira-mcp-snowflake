@@ -18,9 +18,9 @@ SNOWFLAKE_SCHEMA = os.environ.get("SNOWFLAKE_SCHEMA")
 SNOWFLAKE_WAREHOUSE = os.environ.get("SNOWFLAKE_WAREHOUSE", "DEFAULT")
 INTERNAL_GATEWAY = os.environ.get("INTERNAL_GATEWAY", "false")
 
-# Snowflake token handling - for stdio transport, get from environment
+# Snowflake token handling - for stdio transport or internal gateway, get from environment
 # For other transports, it will be retrieved from request context in tools layer
-if MCP_TRANSPORT == "stdio":
+if MCP_TRANSPORT == "stdio" or INTERNAL_GATEWAY.lower() == "true":
     SNOWFLAKE_TOKEN = os.environ.get("SNOWFLAKE_TOKEN")
 else:
     # For non-stdio transports, token will be passed from tools layer
