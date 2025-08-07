@@ -1,5 +1,6 @@
 # Jira MCP Server
 
+
 A Model Context Protocol (MCP) server that provides access to JIRA issue data stored in Snowflake. This server enables AI assistants to query, filter, and analyze JIRA issues through a standardized interface.
 
 ## Overview

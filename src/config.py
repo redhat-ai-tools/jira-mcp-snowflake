@@ -1,6 +1,7 @@
 import os
 import logging
 
+
 # Configure logging to stderr so it doesn't interfere with MCP protocol
 logging.basicConfig(
     level=logging.INFO,
