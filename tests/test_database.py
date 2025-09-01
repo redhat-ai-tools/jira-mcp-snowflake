@@ -1,39 +1,33 @@
 import json
-import os
-import sys
-import httpx
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Add src directory to path before importing local modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
+import httpx
+import pytest
 
-from database import (  # noqa: E402
-    sanitize_sql_value,
-    make_snowflake_request,
+from jira_mcp_snowflake.src.database import (
+    SnowflakeConnectorPool,
+    _execute_connector_query_sync,
+    _process_links_rows,
+    cleanup_resources,
+    clear_cache,
+    execute_queries_in_batches,
     execute_snowflake_query,
     execute_snowflake_query_connector,
-    execute_snowflake_query_api,
-    _execute_connector_query_sync,
     format_snowflake_row,
-    parse_snowflake_timestamp,
-    get_issue_labels,
-    get_issue_comments,
-    get_issue_links,
-    get_issue_status_changes,
-    get_issue_enrichment_data_concurrent,
-    execute_queries_in_batches,
     format_snowflake_rows_concurrent,
+    get_cache_key,
     get_connection_pool,
     get_connector_pool,
-    get_cache_key,
     get_from_cache,
+    get_issue_comments,
+    get_issue_enrichment_data_concurrent,
+    get_issue_labels,
+    get_issue_links,
+    get_issue_status_changes,
+    make_snowflake_request,
+    parse_snowflake_timestamp,
+    sanitize_sql_value,
     set_in_cache,
-    clear_cache,
-    cleanup_resources,
-    SnowflakeConnectorPool,
-    _process_links_rows,
-    SNOWFLAKE_CONNECTOR_AVAILABLE
 )
 
 
@@ -70,9 +64,9 @@ class TestMakeSnowflakeRequest:
     """Test cases for make_snowflake_request function"""
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'default_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.httpx.AsyncClient')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'default_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.httpx.AsyncClient')
     async def test_successful_post_request(self, mock_client_class):
         """Test successful POST request"""
         # Create mock response
@@ -95,17 +89,17 @@ class TestMakeSnowflakeRequest:
         mock_client_instance.request.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', None)
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
     async def test_missing_token(self):
         """Test request with missing token"""
         result = await make_snowflake_request("endpoint", "POST", {"test": "data"})
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'default_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.httpx.AsyncClient')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'default_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.httpx.AsyncClient')
     async def test_provided_token_override(self, mock_client_class):
         """Test that provided token overrides default"""
         mock_response = MagicMock()
@@ -126,9 +120,9 @@ class TestMakeSnowflakeRequest:
         assert headers['Authorization'] == 'Bearer custom_token'
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'test_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.httpx.AsyncClient')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'test_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.httpx.AsyncClient')
     async def test_get_request(self, mock_client_class):
         """Test GET request with params"""
         mock_response = MagicMock()
@@ -149,9 +143,9 @@ class TestMakeSnowflakeRequest:
         assert 'json' not in kwargs
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'test_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.httpx.AsyncClient')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'test_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.httpx.AsyncClient')
     async def test_json_decode_error(self, mock_client_class):
         """Test handling of JSON decode error"""
         mock_response = MagicMock()
@@ -169,9 +163,9 @@ class TestMakeSnowflakeRequest:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'test_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.httpx.AsyncClient')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'test_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.httpx.AsyncClient')
     async def test_http_error(self, mock_client_class):
         """Test handling of HTTP error"""
         mock_response = MagicMock()
@@ -192,8 +186,8 @@ class TestExecuteSnowflakeQuery:
     """Test cases for execute_snowflake_query function"""
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
     async def test_successful_query(self, mock_track, mock_request):
         """Test successful query execution"""
         mock_request.return_value = {
@@ -207,15 +201,15 @@ class TestExecuteSnowflakeQuery:
         mock_track.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
-    @patch('database.get_from_cache')
-    @patch('database.set_in_cache')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.get_from_cache')
+    @patch('jira_mcp_snowflake.src.database.set_in_cache')
     async def test_query_with_pagination(self, mock_set_cache, mock_get_cache, mock_track, mock_request):
         """Test query execution with pagination"""
         # Mock cache miss
         mock_get_cache.return_value = None
-        
+
         # First call returns data with partition info
         first_response = {
             "data": [["row1col1", "row1col2"]],
@@ -240,9 +234,9 @@ class TestExecuteSnowflakeQuery:
         assert mock_request.call_count == 2
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_query_resultset_format(self, mock_clear_cache, mock_track, mock_request):
         """Test query execution with resultSet format"""
         mock_clear_cache()  # Clear cache before test
@@ -258,9 +252,9 @@ class TestExecuteSnowflakeQuery:
         assert result[0] == ["row1col1", "row1col2"]
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_query_no_response(self, mock_clear_cache, mock_track, mock_request):
         """Test query execution when no response is returned"""
         mock_clear_cache()  # Clear cache before test
@@ -272,9 +266,9 @@ class TestExecuteSnowflakeQuery:
         mock_track.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_query_exception(self, mock_clear_cache, mock_track, mock_request):
         """Test query execution when exception occurs"""
         mock_clear_cache()  # Clear cache before test
@@ -484,8 +478,8 @@ class TestGetIssueLabels:
     """Test cases for get_issue_labels function"""
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.format_snowflake_row')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.format_snowflake_row')
     async def test_get_labels_success(self, mock_format, mock_query):
         """Test successful label retrieval"""
         mock_query.return_value = [
@@ -515,7 +509,7 @@ class TestGetIssueLabels:
         assert result == {}
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_labels_invalid_ids(self, mock_query):
         """Test with invalid issue IDs"""
         result = await get_issue_labels(["abc", "def"], "token")
@@ -523,7 +517,7 @@ class TestGetIssueLabels:
         mock_query.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_labels_mixed_valid_invalid_ids(self, mock_query):
         """Test with mix of valid and invalid issue IDs"""
         mock_query.return_value = []
@@ -537,7 +531,7 @@ class TestGetIssueLabels:
         assert "'abc'" not in sql_call
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_labels_exception(self, mock_query):
         """Test exception handling"""
         mock_query.side_effect = Exception("Database error")
@@ -550,8 +544,8 @@ class TestGetIssueComments:
     """Test cases for get_issue_comments function"""
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.format_snowflake_row')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.format_snowflake_row')
     async def test_get_comments_success(self, mock_format, mock_query):
         """Test successful comment retrieval"""
         mock_query.return_value = [
@@ -593,8 +587,8 @@ class TestGetIssueComments:
         assert result == {}
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_get_comments_exception(self, mock_clear_cache, mock_query):
         """Test exception handling"""
         mock_clear_cache()  # Clear cache before test
@@ -608,8 +602,8 @@ class TestGetIssueLinks:
     """Test cases for get_issue_links function"""
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.format_snowflake_row')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.format_snowflake_row')
     async def test_get_links_success(self, mock_format, mock_query):
         """Test successful link retrieval"""
         mock_query.return_value = [
@@ -636,8 +630,8 @@ class TestGetIssueLinks:
         assert link["related_issue_key"] == "TEST-2"
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.format_snowflake_row')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.format_snowflake_row')
     async def test_get_links_bidirectional(self, mock_format, mock_query):
         """Test that links appear for both source and destination issues"""
         mock_query.return_value = [
@@ -677,8 +671,8 @@ class TestGetIssueLinks:
         assert result == {}
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_get_links_exception(self, mock_clear_cache, mock_query):
         """Test exception handling"""
         mock_clear_cache()  # Clear cache before test
@@ -692,8 +686,8 @@ class TestGetIssueStatusChanges:
     """Test cases for get_issue_status_changes function"""
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.format_snowflake_row')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.format_snowflake_row')
     async def test_get_status_changes_success(self, mock_format, mock_query):
         """Test successful status change retrieval"""
         mock_query.return_value = [
@@ -722,26 +716,26 @@ class TestGetIssueStatusChanges:
 
         assert "ITBEAKER-549" in result
         assert len(result["ITBEAKER-549"]) == 2
-        
+
         # Check first status change
         first_change = result["ITBEAKER-549"][0]
         assert first_change["issue_key"] == "ITBEAKER-549"
         assert first_change["from_status"] == "New"
         assert first_change["to_status"] == "In Progress"
         assert first_change["status_transition"] == "New → In Progress"
-        
+
         # Check second status change
         second_change = result["ITBEAKER-549"][1]
         assert second_change["from_status"] == "In Progress"
         assert second_change["to_status"] == "Closed"
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_get_status_changes_connector_method(self, mock_clear_cache, mock_query):
         """Test status change retrieval with connector method"""
         mock_clear_cache()  # Clear cache before test
-        with patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector'):
+        with patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector'):
             mock_query.return_value = [
                 {
                     "ISSUE_KEY": "ITBEAKER-549",
@@ -767,7 +761,7 @@ class TestGetIssueStatusChanges:
         assert result == {}
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_status_changes_invalid_ids(self, mock_query):
         """Test with invalid issue IDs"""
         result = await get_issue_status_changes(["invalid", "abc"], "token")
@@ -776,8 +770,8 @@ class TestGetIssueStatusChanges:
         mock_query.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
-    @patch('database.clear_cache')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.clear_cache')
     async def test_get_status_changes_exception(self, mock_clear_cache, mock_query):
         """Test exception handling"""
         mock_clear_cache()  # Clear cache before test
@@ -805,22 +799,22 @@ class TestCacheFunctionality:
         key = get_cache_key("test_op")
         assert key == "test_op"
 
-    @patch('database.ENABLE_CACHING', True)
+    @patch('jira_mcp_snowflake.src.database.ENABLE_CACHING', True)
     def test_cache_operations_enabled(self):
         """Test cache operations when caching is enabled"""
         clear_cache()  # Start fresh
-        
+
         # Test cache miss
         result = get_from_cache("test_key")
         assert result is None
-        
+
         # Test cache set and hit
         test_data = {"test": "data"}
         set_in_cache("test_key", test_data)
         result = get_from_cache("test_key")
         assert result == test_data
 
-    @patch('database.ENABLE_CACHING', False)
+    @patch('jira_mcp_snowflake.src.database.ENABLE_CACHING', False)
     def test_cache_operations_disabled(self):
         """Test cache operations when caching is disabled"""
         # Should not cache when disabled
@@ -871,10 +865,10 @@ class TestMakeSnowflakeRequestWithCaching:
     """Test cases for make_snowflake_request with caching"""
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'test_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.get_connection_pool')
-    @patch('database._throttler')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'test_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.get_connection_pool')
+    @patch('jira_mcp_snowflake.src.database._throttler')
     async def test_request_with_caching_enabled(self, mock_throttler, mock_pool):
         """Test request with caching enabled"""
         # Setup mocks
@@ -883,29 +877,29 @@ class TestMakeSnowflakeRequestWithCaching:
         mock_response.json.return_value = {"data": "test"}
         mock_response.raise_for_status = MagicMock()
         mock_client.request = AsyncMock(return_value=mock_response)
-        
+
         mock_pool_instance = MagicMock()
         mock_pool_instance.get_client = AsyncMock(return_value=mock_client)
         mock_pool.return_value = mock_pool_instance
-        
+
         mock_throttler.__aenter__ = AsyncMock()
         mock_throttler.__aexit__ = AsyncMock()
 
         clear_cache()  # Start fresh
-        
+
         # First request should hit the API
         result1 = await make_snowflake_request("test", "GET", {"param": "value"}, use_cache=True)
         assert result1 == {"data": "test"}
-        
+
         # Second identical request should hit cache (if caching is enabled)
         result2 = await make_snowflake_request("test", "GET", {"param": "value"}, use_cache=True)
         assert result2 == {"data": "test"}
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_TOKEN', 'test_token')
-    @patch('database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
-    @patch('database.get_connection_pool')
-    @patch('database._throttler')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_TOKEN', 'test_token')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_BASE_URL', 'https://test.snowflake.com')
+    @patch('jira_mcp_snowflake.src.database.get_connection_pool')
+    @patch('jira_mcp_snowflake.src.database._throttler')
     async def test_request_with_caching_disabled(self, mock_throttler, mock_pool):
         """Test request with caching disabled"""
         # Setup mocks
@@ -914,11 +908,11 @@ class TestMakeSnowflakeRequestWithCaching:
         mock_response.json.return_value = {"data": "test"}
         mock_response.raise_for_status = MagicMock()
         mock_client.request = AsyncMock(return_value=mock_response)
-        
+
         mock_pool_instance = MagicMock()
         mock_pool_instance.get_client = AsyncMock(return_value=mock_client)
         mock_pool.return_value = mock_pool_instance
-        
+
         mock_throttler.__aenter__ = AsyncMock()
         mock_throttler.__aexit__ = AsyncMock()
 
@@ -931,29 +925,29 @@ class TestExecuteSnowflakeQueryWithCaching:
     """Test cases for execute_snowflake_query with caching"""
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
     async def test_query_with_cache_hit(self, mock_track, mock_request):
         """Test query execution with cache hit"""
         mock_request.return_value = {"data": [["row1", "row2"]]}
-        
+
         clear_cache()  # Start fresh
-        
+
         # First query should hit the API
         result1 = await execute_snowflake_query("SELECT * FROM test", "token", use_cache=True)
         assert result1 == [["row1", "row2"]]
-        
+
         # Second identical query should hit cache (if caching is enabled)
         result2 = await execute_snowflake_query("SELECT * FROM test", "token", use_cache=True)
         assert result2 == [["row1", "row2"]]
 
     @pytest.mark.asyncio
-    @patch('database.make_snowflake_request')
-    @patch('database.track_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.make_snowflake_request')
+    @patch('jira_mcp_snowflake.src.database.track_snowflake_query')
     async def test_query_without_caching(self, mock_track, mock_request):
         """Test query execution without caching"""
         mock_request.return_value = {"data": [["row1", "row2"]]}
-        
+
         result = await execute_snowflake_query("INSERT INTO test VALUES (1)", "token", use_cache=False)
         assert result == [["row1", "row2"]]
         mock_request.assert_called_once()
@@ -963,10 +957,10 @@ class TestConcurrentFunctions:
     """Test cases for concurrent processing functions"""
 
     @pytest.mark.asyncio
-    @patch('database.get_issue_labels')
-    @patch('database.get_issue_comments') 
-    @patch('database.get_issue_links')
-    @patch('database.get_issue_status_changes')
+    @patch('jira_mcp_snowflake.src.database.get_issue_labels')
+    @patch('jira_mcp_snowflake.src.database.get_issue_comments')
+    @patch('jira_mcp_snowflake.src.database.get_issue_links')
+    @patch('jira_mcp_snowflake.src.database.get_issue_status_changes')
     async def test_get_issue_enrichment_data_concurrent_success(self, mock_status_changes, mock_links, mock_comments, mock_labels):
         """Test successful concurrent data enrichment"""
         # Setup mocks
@@ -974,14 +968,14 @@ class TestConcurrentFunctions:
         mock_comments.return_value = {"123": [{"id": "c1", "body": "comment"}]}
         mock_links.return_value = {"123": [{"id": "l1", "type": "blocks"}]}
         mock_status_changes.return_value = {"TEST-123": [{"from_status": "New", "to_status": "In Progress"}]}
-        
+
         labels, comments, links, status_changes = await get_issue_enrichment_data_concurrent(["123"], "token")
-        
+
         assert labels == {"123": ["bug", "urgent"]}
         assert comments == {"123": [{"id": "c1", "body": "comment"}]}
         assert links == {"123": [{"id": "l1", "type": "blocks"}]}
         assert status_changes == {"TEST-123": [{"from_status": "New", "to_status": "In Progress"}]}
-        
+
         # Verify all functions were called concurrently
         mock_labels.assert_called_once_with(["123"], "token", True)
         mock_comments.assert_called_once_with(["123"], "token", True)
@@ -992,17 +986,17 @@ class TestConcurrentFunctions:
     async def test_get_issue_enrichment_data_concurrent_empty_input(self):
         """Test concurrent data enrichment with empty input"""
         labels, comments, links, status_changes = await get_issue_enrichment_data_concurrent([], "token")
-        
+
         assert labels == {}
         assert comments == {}
         assert links == {}
         assert status_changes == {}
 
     @pytest.mark.asyncio
-    @patch('database.get_issue_labels')
-    @patch('database.get_issue_comments') 
-    @patch('database.get_issue_links')
-    @patch('database.get_issue_status_changes')
+    @patch('jira_mcp_snowflake.src.database.get_issue_labels')
+    @patch('jira_mcp_snowflake.src.database.get_issue_comments')
+    @patch('jira_mcp_snowflake.src.database.get_issue_links')
+    @patch('jira_mcp_snowflake.src.database.get_issue_status_changes')
     async def test_get_issue_enrichment_data_concurrent_with_exception(self, mock_status_changes, mock_links, mock_comments, mock_labels):
         """Test concurrent data enrichment with one function failing"""
         # Setup mocks - one fails, others succeed
@@ -1010,9 +1004,9 @@ class TestConcurrentFunctions:
         mock_comments.return_value = {"123": [{"id": "c1", "body": "comment"}]}
         mock_links.return_value = {"123": [{"id": "l1", "type": "blocks"}]}
         mock_status_changes.return_value = {"TEST-123": [{"from_status": "New", "to_status": "In Progress"}]}
-        
+
         labels, comments, links, status_changes = await get_issue_enrichment_data_concurrent(["123"], "token")
-        
+
         # Failed operation should return empty dict
         assert labels == {}
         assert comments == {"123": [{"id": "c1", "body": "comment"}]}
@@ -1020,7 +1014,7 @@ class TestConcurrentFunctions:
         assert status_changes == {"TEST-123": [{"from_status": "New", "to_status": "In Progress"}]}
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_execute_queries_in_batches_success(self, mock_query):
         """Test successful batch query execution"""
         # Mock query returns
@@ -1029,15 +1023,15 @@ class TestConcurrentFunctions:
             [["row2", "col2"]],
             [["row3", "col3"]]
         ]
-        
+
         queries = ["SELECT 1", "SELECT 2", "SELECT 3"]
         results = await execute_queries_in_batches(queries, "token", batch_size=2)
-        
+
         assert len(results) == 3
         assert results[0] == [["row1", "col1"]]
         assert results[1] == [["row2", "col2"]]
         assert results[2] == [["row3", "col3"]]
-        
+
         # Should be called 3 times (once per query)
         assert mock_query.call_count == 3
 
@@ -1048,7 +1042,7 @@ class TestConcurrentFunctions:
         assert results == []
 
     @pytest.mark.asyncio
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_execute_queries_in_batches_with_exception(self, mock_query):
         """Test batch query execution with one query failing"""
         # First query succeeds, second fails
@@ -1056,34 +1050,34 @@ class TestConcurrentFunctions:
             [["row1", "col1"]],
             Exception("Query error")
         ]
-        
+
         queries = ["SELECT 1", "SELECT 2"]
         results = await execute_queries_in_batches(queries, "token", batch_size=1)
-        
+
         assert len(results) == 2
         assert results[0] == [["row1", "col1"]]
         assert results[1] == []  # Failed query returns empty list
 
     @pytest.mark.asyncio
-    @patch('database._thread_pool')
+    @patch('jira_mcp_snowflake.src.database._thread_pool')
     async def test_format_snowflake_rows_concurrent_small_dataset(self, mock_thread_pool):
         """Test concurrent row formatting with small dataset"""
         import asyncio
-        
+
         rows = [["val1", "val2"], ["val3", "val4"]]
         columns = ["col1", "col2"]
-        
+
         # Mock the thread pool execution
         expected_result = [{"col1": "val1", "col2": "val2"}, {"col1": "val3", "col2": "val4"}]
-        
+
         loop = asyncio.get_event_loop()
         future = asyncio.Future()
         future.set_result(expected_result)
         loop.run_in_executor = AsyncMock(return_value=expected_result)
-        
-        with patch('database.asyncio.get_event_loop', return_value=loop):
+
+        with patch('jira_mcp_snowflake.src.database.asyncio.get_event_loop', return_value=loop):
             result = await format_snowflake_rows_concurrent(rows, columns, batch_size=100)
-        
+
         assert result == expected_result
 
     @pytest.mark.asyncio
@@ -1102,35 +1096,35 @@ class TestSnowflakeConnectorPool:
         assert pool._connection is None
         assert pool._lock is not None
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', False)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', False)
     def test_build_connection_params_no_connector(self):
         """Test connection params building when connector is not available"""
         pool = SnowflakeConnectorPool()
         with pytest.raises(ImportError, match="snowflake-connector-python is not installed"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', None)
     def test_build_connection_params_no_account(self):
         """Test connection params building without account"""
         pool = SnowflakeConnectorPool()
         with pytest.raises(ValueError, match="SNOWFLAKE_ACCOUNT is required"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'snowflake')
-    @patch('database.SNOWFLAKE_USER', 'test-user')
-    @patch('database.SNOWFLAKE_PASSWORD', 'test-password')
-    @patch('database.SNOWFLAKE_ROLE', 'test-role')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'snowflake')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_USER', 'test-user')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_PASSWORD', 'test-password')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ROLE', 'test-role')
     def test_build_connection_params_default_auth(self):
         """Test connection params building with default authentication"""
         pool = SnowflakeConnectorPool()
         params = pool._build_connection_params()
-        
+
         assert params['account'] == 'test-account'
         assert params['database'] == 'test-db'
         assert params['schema'] == 'test-schema'
@@ -1139,59 +1133,59 @@ class TestSnowflakeConnectorPool:
         assert params['password'] == 'test-password'
         assert params['role'] == 'test-role'
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'snowflake_jwt')
-    @patch('database.SNOWFLAKE_USER', 'test-user')
-    @patch('database.SNOWFLAKE_PRIVATE_KEY_FILE', '/path/to/key.p8')
-    @patch('database.SNOWFLAKE_PRIVATE_KEY_FILE_PWD', 'key-password')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'snowflake_jwt')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_USER', 'test-user')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_PRIVATE_KEY_FILE', '/path/to/key.p8')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_PRIVATE_KEY_FILE_PWD', 'key-password')
     def test_build_connection_params_jwt_auth(self):
         """Test connection params building with JWT authentication"""
         pool = SnowflakeConnectorPool()
         params = pool._build_connection_params()
-        
+
         assert params['authenticator'] == 'SNOWFLAKE_JWT'
         assert params['user'] == 'test-user'
         assert params['private_key_file'] == '/path/to/key.p8'
         assert params['private_key_file_pwd'] == 'key-password'
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'snowflake_jwt')
-    @patch('database.SNOWFLAKE_USER', 'test-user')
-    @patch('database.SNOWFLAKE_PRIVATE_KEY_FILE', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'snowflake_jwt')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_USER', 'test-user')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_PRIVATE_KEY_FILE', None)
     def test_build_connection_params_jwt_auth_no_key_file(self):
         """Test connection params building with JWT authentication but no key file"""
         pool = SnowflakeConnectorPool()
         with pytest.raises(ValueError, match="SNOWFLAKE_PRIVATE_KEY_FILE is required for JWT authentication"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'oauth_client_credentials')
-    @patch('database.SNOWFLAKE_OAUTH_CLIENT_ID', None)
-    @patch('database.SNOWFLAKE_OAUTH_CLIENT_SECRET', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'oauth_client_credentials')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_OAUTH_CLIENT_ID', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_OAUTH_CLIENT_SECRET', None)
     def test_build_connection_params_oauth_client_credentials_missing_creds(self):
         """Test connection params building with OAuth client credentials but missing credentials"""
         pool = SnowflakeConnectorPool()
         with pytest.raises(ValueError, match="SNOWFLAKE_OAUTH_CLIENT_ID and SNOWFLAKE_OAUTH_CLIENT_SECRET are required"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'oauth')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'oauth')
     @patch('config.SNOWFLAKE_TOKEN', None)
     def test_build_connection_params_oauth_token_missing_token(self):
         """Test connection params building with OAuth token but missing token"""
@@ -1199,68 +1193,68 @@ class TestSnowflakeConnectorPool:
         with pytest.raises(ValueError, match="SNOWFLAKE_TOKEN is required for OAuth token authentication"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'snowflake')
-    @patch('database.SNOWFLAKE_USER', None)
-    @patch('database.SNOWFLAKE_PASSWORD', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'snowflake')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_USER', None)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_PASSWORD', None)
     def test_build_connection_params_default_auth_missing_creds(self):
         """Test connection params building with default auth but missing credentials"""
         pool = SnowflakeConnectorPool()
         with pytest.raises(ValueError, match="SNOWFLAKE_USER and SNOWFLAKE_PASSWORD are required"):
             pool._build_connection_params()
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'oauth_client_credentials')
-    @patch('database.SNOWFLAKE_OAUTH_CLIENT_ID', 'client-id')
-    @patch('database.SNOWFLAKE_OAUTH_CLIENT_SECRET', 'client-secret')
-    @patch('database.SNOWFLAKE_OAUTH_TOKEN_URL', 'https://token.url')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'oauth_client_credentials')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_OAUTH_CLIENT_ID', 'client-id')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_OAUTH_CLIENT_SECRET', 'client-secret')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_OAUTH_TOKEN_URL', 'https://token.url')
     def test_build_connection_params_oauth_client_credentials(self):
         """Test connection params building with OAuth client credentials"""
         pool = SnowflakeConnectorPool()
         params = pool._build_connection_params()
-        
+
         assert params['authenticator'] == 'OAUTH_CLIENT_CREDENTIALS'
         assert params['oauth_client_id'] == 'client-id'
         assert params['oauth_client_secret'] == 'client-secret'
         assert params['oauth_token_request_url'] == 'https://token.url'
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.SNOWFLAKE_ACCOUNT', 'test-account')
-    @patch('database.SNOWFLAKE_DATABASE', 'test-db')
-    @patch('database.SNOWFLAKE_SCHEMA', 'test-schema')
-    @patch('database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
-    @patch('database.SNOWFLAKE_AUTHENTICATOR', 'oauth')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_ACCOUNT', 'test-account')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_DATABASE', 'test-db')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_SCHEMA', 'test-schema')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_WAREHOUSE', 'test-warehouse')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_AUTHENTICATOR', 'oauth')
     @patch('config.SNOWFLAKE_TOKEN', 'oauth-token')
     def test_build_connection_params_oauth_token(self):
         """Test connection params building with OAuth token"""
         pool = SnowflakeConnectorPool()
         params = pool._build_connection_params()
-        
+
         assert params['authenticator'] == 'OAUTH'
         assert params['token'] == 'oauth-token'
 
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.snowflake.connector.connect')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.snowflake.connector.connect')
     def test_get_connection_new(self, mock_connect):
         """Test getting a new connection"""
         mock_connection = MagicMock()
         mock_connection.is_closed.return_value = True
         mock_connect.return_value = mock_connection
-        
+
         with patch.object(SnowflakeConnectorPool, '_build_connection_params') as mock_build:
             mock_build.return_value = {'account': 'test'}
-            
+
             pool = SnowflakeConnectorPool()
             conn = pool.get_connection()
-            
+
             assert conn == mock_connection
             mock_connect.assert_called_once_with(account='test')
 
@@ -1268,10 +1262,10 @@ class TestSnowflakeConnectorPool:
         """Test reusing existing connection"""
         mock_connection = MagicMock()
         mock_connection.is_closed.return_value = False
-        
+
         pool = SnowflakeConnectorPool()
         pool._connection = mock_connection
-        
+
         conn = pool.get_connection()
         assert conn == mock_connection
 
@@ -1279,10 +1273,10 @@ class TestSnowflakeConnectorPool:
         """Test closing connection"""
         mock_connection = MagicMock()
         mock_connection.is_closed.return_value = False
-        
+
         pool = SnowflakeConnectorPool()
         pool._connection = mock_connection
-        
+
         pool.close()
         mock_connection.close.assert_called_once()
         assert pool._connection is None
@@ -1308,157 +1302,157 @@ class TestConnectorQueries:
     """Test cases for connector-based query execution"""
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
-    @patch('database.execute_snowflake_query_connector')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', True)
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query_connector')
     async def test_execute_snowflake_query_connector_method(self, mock_connector_query):
         """Test query routing to connector method"""
         mock_connector_query.return_value = [{"id": 1, "name": "test"}]
-        
+
         result = await execute_snowflake_query("SELECT * FROM test", use_cache=False)
-        
+
         mock_connector_query.assert_called_once_with("SELECT * FROM test", False)
         assert result == [{"id": 1, "name": "test"}]
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
-    @patch('database.SNOWFLAKE_CONNECTOR_AVAILABLE', False)
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTOR_AVAILABLE', False)
     async def test_execute_snowflake_query_connector_unavailable(self):
         """Test query when connector method requested but unavailable"""
         result = await execute_snowflake_query("SELECT * FROM test")
         assert result == []
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'api')
-    @patch('database.execute_snowflake_query_api')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'api')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query_api')
     async def test_execute_snowflake_query_api_method(self, mock_api_query):
         """Test query routing to API method"""
         mock_api_query.return_value = [{"id": 1, "name": "test"}]
-        
+
         result = await execute_snowflake_query("SELECT * FROM test", "token")
-        
+
         mock_api_query.assert_called_once_with("SELECT * FROM test", "token", True)
         assert result == [{"id": 1, "name": "test"}]
 
     @pytest.mark.asyncio
-    @patch('database._thread_pool')
-    @patch('database.get_cache_key')
-    @patch('database.get_from_cache')
-    @patch('database.set_in_cache')
+    @patch('jira_mcp_snowflake.src.database._thread_pool')
+    @patch('jira_mcp_snowflake.src.database.get_cache_key')
+    @patch('jira_mcp_snowflake.src.database.get_from_cache')
+    @patch('jira_mcp_snowflake.src.database.set_in_cache')
     async def test_execute_snowflake_query_connector_with_cache(self, mock_set_cache, mock_get_cache, mock_cache_key, mock_thread_pool):
         """Test connector query with caching"""
         mock_cache_key.return_value = "cache_key"
         mock_get_cache.return_value = [{"cached": "result"}]
-        
+
         result = await execute_snowflake_query_connector("SELECT * FROM test", True)
-        
+
         assert result == [{"cached": "result"}]
         mock_get_cache.assert_called_once_with("cache_key")
 
     @pytest.mark.asyncio
-    @patch('database._thread_pool')
-    @patch('database._execute_connector_query_sync')
+    @patch('jira_mcp_snowflake.src.database._thread_pool')
+    @patch('jira_mcp_snowflake.src.database._execute_connector_query_sync')
     async def test_execute_snowflake_query_connector_execution(self, mock_sync_query, mock_thread_pool):
         """Test connector query execution"""
         import asyncio
-        
+
         mock_sync_query.return_value = [{"id": 1, "name": "test"}]
-        
+
         # Mock the thread pool execution
         loop = asyncio.get_event_loop()
         future = asyncio.Future()
         future.set_result([{"id": 1, "name": "test"}])
         loop.run_in_executor = AsyncMock(return_value=[{"id": 1, "name": "test"}])
-        
-        with patch('database.asyncio.get_event_loop', return_value=loop):
+
+        with patch('jira_mcp_snowflake.src.database.asyncio.get_event_loop', return_value=loop):
             result = await execute_snowflake_query_connector("SELECT * FROM test", False)
-        
+
         assert result == [{"id": 1, "name": "test"}]
 
-    @patch('database.get_connector_pool')
+    @patch('jira_mcp_snowflake.src.database.get_connector_pool')
     def test_execute_connector_query_sync(self, mock_get_pool):
         """Test synchronous connector query execution"""
         # Mock connection and cursor
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [("value1", "2023-01-01T10:00:00")]
         mock_cursor.description = [("col1",), ("CREATED",)]
-        
+
         mock_connection = MagicMock()
         mock_connection.cursor.return_value = mock_cursor
-        
+
         mock_pool = MagicMock()
         mock_pool.get_connection.return_value = mock_connection
         mock_get_pool.return_value = mock_pool
-        
+
         result = _execute_connector_query_sync("SELECT * FROM test")
-        
+
         assert len(result) == 1
         assert result[0]["col1"] == "value1"
         assert result[0]["CREATED"] == "2023-01-01T10:00:00"
         mock_cursor.close.assert_called_once()
 
-    @patch('database.get_connector_pool')
+    @patch('jira_mcp_snowflake.src.database.get_connector_pool')
     def test_execute_connector_query_sync_snowflake_error(self, mock_get_pool):
         """Test synchronous connector query with Snowflake error"""
         from database import SnowflakeError
-        
+
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = SnowflakeError("Connection failed")
         mock_get_pool.return_value = mock_pool
-        
+
         with pytest.raises(SnowflakeError):
             _execute_connector_query_sync("SELECT * FROM test")
 
-    @patch('database.get_connector_pool')
+    @patch('jira_mcp_snowflake.src.database.get_connector_pool')
     def test_execute_connector_query_sync_general_error(self, mock_get_pool):
         """Test synchronous connector query with general error"""
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("General error")
         mock_get_pool.return_value = mock_pool
-        
+
         with pytest.raises(Exception):
             _execute_connector_query_sync("SELECT * FROM test")
 
-    @patch('database.get_connector_pool')
+    @patch('jira_mcp_snowflake.src.database.get_connector_pool')
     def test_execute_connector_query_sync_timestamp_handling(self, mock_get_pool):
         """Test timestamp handling in synchronous connector query"""
         from datetime import datetime
-        
+
         # Mock connection and cursor with datetime object
         mock_cursor = MagicMock()
         timestamp_obj = datetime(2023, 1, 1, 10, 0, 0)
         mock_cursor.fetchall.return_value = [("value1", timestamp_obj)]
         mock_cursor.description = [("col1",), ("CREATED",)]
-        
+
         mock_connection = MagicMock()
         mock_connection.cursor.return_value = mock_cursor
-        
+
         mock_pool = MagicMock()
         mock_pool.get_connection.return_value = mock_connection
         mock_get_pool.return_value = mock_pool
-        
+
         result = _execute_connector_query_sync("SELECT * FROM test")
-        
+
         assert len(result) == 1
         assert result[0]["col1"] == "value1"
         assert result[0]["CREATED"] == "2023-01-01T10:00:00"
 
     @pytest.mark.asyncio
-    @patch('database._thread_pool')
-    @patch('database._execute_connector_query_sync')
+    @patch('jira_mcp_snowflake.src.database._thread_pool')
+    @patch('jira_mcp_snowflake.src.database._execute_connector_query_sync')
     async def test_execute_snowflake_query_connector_exception(self, mock_sync_query, mock_thread_pool):
         """Test connector query execution with exception"""
         import asyncio
-        
+
         mock_sync_query.side_effect = Exception("Query failed")
-        
+
         # Mock the thread pool execution
         loop = asyncio.get_event_loop()
         loop.run_in_executor = AsyncMock(side_effect=Exception("Query failed"))
-        
-        with patch('database.asyncio.get_event_loop', return_value=loop):
+
+        with patch('jira_mcp_snowflake.src.database.asyncio.get_event_loop', return_value=loop):
             result = await execute_snowflake_query_connector("SELECT * FROM test", False)
-        
+
         assert result == []
 
 
@@ -1482,22 +1476,22 @@ class TestProcessLinksRows:
                 "DESTINATION_SUMMARY": "Dest issue"
             }
         ]
-        
+
         sanitized_ids = ["100", "200"]
         links_data = {}
-        
+
         _process_links_rows(rows, sanitized_ids, links_data)
-        
+
         # Should have entries for both source and destination
         assert "100" in links_data
         assert "200" in links_data
-        
+
         # Check source perspective (outward)
         source_link = links_data["100"][0]
         assert source_link["relationship"] == "outward"
         assert source_link["related_issue_id"] == "200"
         assert source_link["relationship_description"] == "blocks"
-        
+
         # Check destination perspective (inward)
         dest_link = links_data["200"][0]
         assert dest_link["relationship"] == "inward"
@@ -1521,13 +1515,13 @@ class TestProcessLinksRows:
                 "DESTINATION_SUMMARY": "Dest issue"
             }
         ]
-        
+
         # Only include source ID in sanitized_ids
         sanitized_ids = ["100"]
         links_data = {}
-        
+
         _process_links_rows(rows, sanitized_ids, links_data)
-        
+
         # Should only have entry for source
         assert "100" in links_data
         assert "200" not in links_data
@@ -1538,9 +1532,9 @@ class TestProcessLinksRows:
         rows = []
         sanitized_ids = ["100"]
         links_data = {}
-        
+
         _process_links_rows(rows, sanitized_ids, links_data)
-        
+
         assert len(links_data) == 0
 
 
@@ -1548,8 +1542,8 @@ class TestConnectorMethodIntegration:
     """Integration tests for connector method in existing functions"""
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_issue_labels_connector_method(self, mock_query):
         """Test get_issue_labels with connector method"""
         # Mock connector returning dictionaries directly
@@ -1557,16 +1551,16 @@ class TestConnectorMethodIntegration:
             {"ISSUE": "123", "LABEL": "bug"},
             {"ISSUE": "123", "LABEL": "urgent"}
         ]
-        
+
         result = await get_issue_labels(["123"], use_cache=False)
-        
+
         assert "123" in result
         assert result["123"] == ["bug", "urgent"]
         mock_query.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
-    @patch('database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
     async def test_get_issue_comments_connector_method(self, mock_query):
         """Test get_issue_comments with connector method"""
         mock_query.return_value = [
@@ -1579,37 +1573,37 @@ class TestConnectorMethodIntegration:
                 "UPDATED": "2023-01-01T10:00:00"
             }
         ]
-        
+
         result = await get_issue_comments(["123"], use_cache=False)
-        
+
         assert "123" in result
         assert len(result["123"]) == 1
         assert result["123"][0]["body"] == "Test comment"
 
     @pytest.mark.asyncio
-    @patch('database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
-    @patch('database.execute_snowflake_query')
-    @patch('database._process_links_rows')
+    @patch('jira_mcp_snowflake.src.database.SNOWFLAKE_CONNECTION_METHOD', 'connector')
+    @patch('jira_mcp_snowflake.src.database.execute_snowflake_query')
+    @patch('jira_mcp_snowflake.src.database._process_links_rows')
     async def test_get_issue_links_connector_method(self, mock_process, mock_query):
         """Test get_issue_links with connector method"""
         mock_query.return_value = [{"LINK_ID": "1", "SOURCE": "100"}]
-        
-        result = await get_issue_links(["100"], use_cache=False)
-        
+
+        await get_issue_links(["100"], use_cache=False)
+
         mock_query.assert_called_once()
         mock_process.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('database.cleanup_resources')
-    @patch('database._connector_pool')
+    @patch('jira_mcp_snowflake.src.database.cleanup_resources')
+    @patch('jira_mcp_snowflake.src.database._connector_pool')
     async def test_cleanup_resources_with_connector(self, mock_connector_pool, mock_orig_cleanup):
         """Test cleanup_resources includes connector pool cleanup"""
         mock_pool = MagicMock()
-        
+
         # Import and patch the module-level variable
         import database
         database._connector_pool = mock_pool
-        
+
         await cleanup_resources()
-        
+
         mock_pool.close.assert_called_once()

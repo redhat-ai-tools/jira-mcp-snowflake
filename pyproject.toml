@@ -1,33 +1,116 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jira_mcp_snowflake"]
+
 [project]
 name = "jira-mcp-snowflake"
 version = "0.1.0"
 description = "A Model Context Protocol (MCP) server that provides access to JIRA issue data stored in Snowflake"
 readme = "README.md"
-requires-python = ">=3.10"
+keywords = ["mcp", "jira", "snowflake", "server"]
+requires-python = ">=3.12"
 dependencies = [
+    "fastmcp==2.10.4",
     "httpx[http2]==0.28.1",
-    "mcp==1.13.1",
+    "pydantic==2.11.7",
+    "pydantic-settings==2.10.1",
+    "structlog==25.4.0",
+    "python-dotenv==1.1.1",
+    "fastapi==0.116.0",
+    "uvicorn==0.35.0",
     "prometheus_client==0.20.0",
     "cachetools==5.3.2",
     "asyncio-throttle==1.0.2",
     "snowflake-connector-python>=3.12.0",
 ]
 
-[project.scripts]
-jira-mcp-snowflake = "src.mcp_server:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[tool.uv]
-dev-dependencies = [
-    "flake8>=7.3.0",
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.1",
+    "pytest-asyncio==1.0.0",
+    "pytest-cov==6.2.1",
+    "ruff==0.12.2",
+    "mypy==1.16.1",
+    "pre-commit==4.2.0",
     "requests>=2.32.4",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+jira-mcp-snowflake = "jira_mcp_snowflake.src.main:main"
+
+[project.urls]
+Homepage = "https://github.com/eifrach/jira-mcp-snowflake"
+Repository = "https://github.com/eifrach/jira-mcp-snowflake"
+Issues = "https://github.com/eifrach/jira-mcp-snowflake/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
+    "ruff>=0.12.2",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+lint.select = ["E", "W", "F", "I", "F401"]
+lint.ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["jira_mcp_snowflake"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+]
+markers = ["asyncio"]
+
+[tool.coverage.run]
+source = ["jira_mcp_snowflake"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
 ] 

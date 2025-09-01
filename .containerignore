@@ -1,0 +1,69 @@
+# Git and version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+CHANGELOG.md
+docs/
+
+# Examples and scripts
+examples/
+scripts/
+
+# OpenShift deployment files
+openshift/
+
+# Development files
+.env
+.env.local
+compose.yaml
+
+# Testing
+tests/
+pytest.ini
+conftest.py
+
+# Linting and formatting
+.pre-commit-config.yaml
+
+# Makefile
+Makefile
+
+# Container files
+Containerfile
+.containerignore
+
+# Other development files
+*.log
+.pytest_cache
+temp/
+tmp/

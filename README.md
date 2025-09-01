@@ -244,7 +244,7 @@ make uv_sync_dev
 
 #### Testing and Quality Assurance
 ```bash
-# Run linting (flake8)
+# Run linting (ruff)
 make lint
 
 # Run tests with coverage

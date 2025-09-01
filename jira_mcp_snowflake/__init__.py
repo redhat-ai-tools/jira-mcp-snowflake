@@ -1,0 +1,1 @@
+"""JIRA MCP Snowflake package."""

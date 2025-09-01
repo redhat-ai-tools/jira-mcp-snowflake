@@ -1,7 +1,36 @@
-Snowflake_CSV/
-.venv/
-**/*.pvc
+# Git and version control
+.git/
+.gitignore
+
+# Python
 __pycache__/
-**/.pytest_cache
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 .coverage
-coverage.xml   
+htmlcov/
+coverage.xml
+.tox/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+
+# old files
+Snowflake_CSV/

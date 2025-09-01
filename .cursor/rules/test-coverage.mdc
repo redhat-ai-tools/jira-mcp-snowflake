@@ -52,7 +52,7 @@ When modifying files in [src/](mdc:src/), ensure corresponding test files exist 
 
 - **Full test suite**: `make test` (linting + pytest with coverage)
 - **Tests only**: `make pytest` or `uv run pytest tests/ --cov=src --cov-report=xml --cov-report=term -v --tb=short`
-- **Linting only**: `make lint` or `uv run flake8 src/ --max-line-length=120 --ignore=E501,W503`
+- **Linting only**: `make lint` or `uv run ruff check jira_mcp_snowflake/`
 
 ### 6. Coverage Standards
 

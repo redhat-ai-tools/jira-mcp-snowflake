@@ -23,8 +23,8 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
     
-    - name: Run flake8
-      run: uv run flake8 src/ --max-line-length=120 --ignore=E501,W503
+    - name: Run ruff
+      run: uv run ruff check jira_mcp_snowflake/
 
   test:
     name: Tests & Coverage

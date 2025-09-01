@@ -16,7 +16,7 @@ This project uses [UV](https://docs.astral.sh/uv/) for Python package management
 - **Install dependencies**: `uv sync --dev` (includes dev dependencies)
 - **Run Python scripts**: `uv run <script>` 
 - **Run tests**: `uv run pytest`
-- **Run linting**: `uv run flake8`
+- **Run linting**: `uv run ruff check`
 - **Add new dependencies**: `uv add <package>`
 - **Add dev dependencies**: `uv add --dev <package>`
 
@@ -26,7 +26,7 @@ Reference the project configuration in [pyproject.toml](mdc:pyproject.toml) for 
 
 ### Code Style Standards
 - **Follow PEP 8** religiously with these project-specific extensions:
-- **Line length**: 120 characters max (configured in flake8)
+- **Line length**: 88 characters max (configured in ruff)
 - **Imports**: Group imports (stdlib, third-party, local) with blank lines between groups
 - **Type hints**: MANDATORY for all function signatures, class attributes, and complex variables
 - **Docstrings**: Use Google-style docstrings for all public functions, classes, and modules
@@ -208,13 +208,13 @@ make test
 
 This command (defined in [Makefile](mdc:Makefile)) will:
 1. Sync dependencies with `uv sync --dev`
-2. Run `flake8` linting on the `src/` directory
+2. Run `ruff` linting on the `jira_mcp_snowflake/` directory
 3. Run `pytest` with coverage reporting
 
 ### Individual Test Commands
 
 If you need to run specific parts:
-- **Linting only**: `make lint` or `uv run flake8 src/ --max-line-length=120 --ignore=E501,W503`
+- **Linting only**: `make lint` or `uv run ruff check jira_mcp_snowflake/`
 - **Unit tests only**: `make pytest` or `uv run pytest tests/ --cov=src --cov-report=xml --cov-report=term -v --tb=short`
 
 ### Performance Testing

@@ -1,18 +1,37 @@
-import time
-import threading
-import logging
 import http.server
+import logging
 import socketserver
+import threading
+import time
 from functools import wraps
-from typing import Callable, Any
+from typing import Any, Callable
 
-from config import ENABLE_METRICS, METRICS_PORT, PROMETHEUS_AVAILABLE
+from jira_mcp_snowflake.src.settings import settings
+
+# Check if Prometheus is available
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+    )
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 # Initialize Prometheus metrics if enabled
-if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
-    from prometheus_client import Counter, Histogram, Gauge, CONTENT_TYPE_LATEST, generate_latest
+if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+    )
 
     # Create metrics
     tool_calls_total = Counter(
@@ -65,8 +84,8 @@ if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         'Number of active HTTP connections in the pool'
     )
 
-    logger.info(f"Prometheus metrics enabled on port {METRICS_PORT}")
-elif ENABLE_METRICS and not PROMETHEUS_AVAILABLE:
+    logger.info(f"Prometheus metrics enabled on port {settings.METRICS_PORT}")
+elif settings.ENABLE_METRICS and not PROMETHEUS_AVAILABLE:
     logger.warning("Metrics enabled but prometheus_client not available. Install with: pip install prometheus_client")
 else:
     logger.info("Prometheus metrics disabled")
@@ -77,7 +96,7 @@ def track_tool_usage(tool_name: str):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+            if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
                 start_time = time.time()
                 try:
                     result = await func(*args, **kwargs)
@@ -100,7 +119,7 @@ def track_tool_usage(tool_name: str):
 
 def track_snowflake_query(start_time: float, success: bool) -> None:
     """Track Snowflake query metrics"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         status = 'success' if success else 'error'
         snowflake_queries_total.labels(status=status).inc()
 
@@ -110,33 +129,33 @@ def track_snowflake_query(start_time: float, success: bool) -> None:
 
 def set_active_connections(count: int) -> None:
     """Set the number of active connections"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         active_connections.set(count)
 
 
 def track_cache_operation(operation: str, hit: bool) -> None:
     """Track cache operations"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         result = 'hit' if hit else 'miss'
         cache_operations_total.labels(operation=operation, result=result).inc()
 
 
 def update_cache_hit_ratio(hits: int, total: int) -> None:
     """Update cache hit ratio"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE and total > 0:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE and total > 0:
         ratio = (hits / total) * 100
         cache_hit_ratio.set(ratio)
 
 
 def track_concurrent_operation(operation_type: str) -> None:
     """Track concurrent operations"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         concurrent_operations_total.labels(operation_type=operation_type).inc()
 
 
 def set_http_connections_active(count: int) -> None:
     """Set the number of active HTTP connections"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         http_connections_active.set(count)
 
 
@@ -171,15 +190,15 @@ class MetricsHandler(http.server.BaseHTTPRequestHandler):
 
 def start_metrics_server() -> None:
     """Start the metrics HTTP server in a separate thread"""
-    if not (ENABLE_METRICS and PROMETHEUS_AVAILABLE):
+    if not (settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE):
         return
 
     try:
-        httpd = socketserver.TCPServer(("", METRICS_PORT), MetricsHandler)
+        httpd = socketserver.TCPServer(("", settings.METRICS_PORT), MetricsHandler)
         httpd.allow_reuse_address = True
-        logger.info(f"Metrics server started on port {METRICS_PORT}")
-        logger.info(f"Metrics available at http://localhost:{METRICS_PORT}/metrics")
-        logger.info(f"Health check available at http://localhost:{METRICS_PORT}/health")
+        logger.info(f"Metrics server started on port {settings.METRICS_PORT}")
+        logger.info(f"Metrics available at http://localhost:{settings.METRICS_PORT}/metrics")
+        logger.info(f"Health check available at http://localhost:{settings.METRICS_PORT}/health")
         httpd.serve_forever()
     except Exception as e:
         logger.error(f"Failed to start metrics server: {e}")
@@ -187,7 +206,7 @@ def start_metrics_server() -> None:
 
 def start_metrics_thread() -> None:
     """Start metrics server in a background thread"""
-    if ENABLE_METRICS and PROMETHEUS_AVAILABLE:
+    if settings.ENABLE_METRICS and PROMETHEUS_AVAILABLE:
         metrics_thread = threading.Thread(target=start_metrics_server, daemon=True)
         metrics_thread.start()
         set_active_connections(1)

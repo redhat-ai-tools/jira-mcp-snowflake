@@ -1,15 +1,15 @@
-import json
-import time
-import logging
 import asyncio
+import json
+import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, timedelta
-from typing import Any, List, Dict, Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from cachetools import TTLCache
 from asyncio_throttle import Throttler
+from cachetools import TTLCache
 
 try:
     import snowflake.connector
@@ -19,48 +19,23 @@ except ImportError:
     SNOWFLAKE_CONNECTOR_AVAILABLE = False
     SnowflakeError = Exception
 
-from config import (
-    SNOWFLAKE_BASE_URL,
-    SNOWFLAKE_ACCOUNT,
-    SNOWFLAKE_DATABASE,
-    SNOWFLAKE_SCHEMA,
-    SNOWFLAKE_TOKEN,
-    SNOWFLAKE_WAREHOUSE,
-    SNOWFLAKE_USER,
-    SNOWFLAKE_PASSWORD,
-    SNOWFLAKE_ROLE,
-    SNOWFLAKE_CONNECTION_METHOD,
-    SNOWFLAKE_AUTHENTICATOR,
-    SNOWFLAKE_PRIVATE_KEY_FILE,
-    SNOWFLAKE_PRIVATE_KEY_FILE_PWD,
-    SNOWFLAKE_OAUTH_CLIENT_ID,
-    SNOWFLAKE_OAUTH_CLIENT_SECRET,
-    SNOWFLAKE_OAUTH_TOKEN_URL,
-    ENABLE_CACHING,
-    CACHE_TTL_SECONDS,
-    CACHE_MAX_SIZE,
-    MAX_HTTP_CONNECTIONS,
-    HTTP_TIMEOUT_SECONDS,
-    THREAD_POOL_WORKERS,
-    RATE_LIMIT_PER_SECOND,
-    CONCURRENT_QUERY_BATCH_SIZE
-)
-from metrics import track_snowflake_query
+from jira_mcp_snowflake.src.metrics import track_snowflake_query
+from jira_mcp_snowflake.src.settings import settings
 
 logger = logging.getLogger(__name__)
 
 # Global connection pool and cache
 _connection_pool = None
-_cache = TTLCache(maxsize=CACHE_MAX_SIZE, ttl=CACHE_TTL_SECONDS) if ENABLE_CACHING else None
+_cache = TTLCache(maxsize=settings.CACHE_MAX_SIZE, ttl=settings.CACHE_TTL_SECONDS) if settings.ENABLE_CACHING else None
 _cache_lock = threading.RLock()
-_throttler = Throttler(rate_limit=RATE_LIMIT_PER_SECOND, period=1.0)
-_thread_pool = ThreadPoolExecutor(max_workers=THREAD_POOL_WORKERS, thread_name_prefix="snowflake-worker")
+_throttler = Throttler(rate_limit=settings.RATE_LIMIT_PER_SECOND, period=1.0)
+_thread_pool = ThreadPoolExecutor(max_workers=settings.THREAD_POOL_WORKERS, thread_name_prefix="snowflake-worker")
 
 
 class SnowflakeConnectionPool:
     """Connection pool for Snowflake API requests"""
 
-    def __init__(self, max_connections: int = MAX_HTTP_CONNECTIONS, timeout: float = HTTP_TIMEOUT_SECONDS):
+    def __init__(self, max_connections: int = settings.MAX_HTTP_CONNECTIONS, timeout: float = settings.HTTP_TIMEOUT_SECONDS):
         self.max_connections = max_connections
         self.timeout = timeout
         self._client = None
@@ -115,43 +90,43 @@ class SnowflakeConnectorPool:
         if not SNOWFLAKE_CONNECTOR_AVAILABLE:
             raise ImportError("snowflake-connector-python is not installed")
 
-        if not SNOWFLAKE_ACCOUNT:
-            raise ValueError("SNOWFLAKE_ACCOUNT is required for connector-based connections")
+        if not settings.SNOWFLAKE_ACCOUNT:
+            raise ValueError("settings.SNOWFLAKE_ACCOUNT is required for connector-based connections")
 
         conn_params = {
-            'account': SNOWFLAKE_ACCOUNT,
-            'database': SNOWFLAKE_DATABASE,
-            'schema': SNOWFLAKE_SCHEMA,
-            'warehouse': SNOWFLAKE_WAREHOUSE,
+            'account': settings.SNOWFLAKE_ACCOUNT,
+            'database': settings.SNOWFLAKE_DATABASE,
+            'schema': settings.SNOWFLAKE_SCHEMA,
+            'warehouse': settings.SNOWFLAKE_WAREHOUSE,
         }
 
-        if SNOWFLAKE_ROLE:
-            conn_params['role'] = SNOWFLAKE_ROLE
+        if settings.SNOWFLAKE_ROLE:
+            conn_params['role'] = settings.SNOWFLAKE_ROLE
 
         # Authentication methods
-        if SNOWFLAKE_AUTHENTICATOR.lower() == 'snowflake_jwt':
+        if settings.SNOWFLAKE_AUTHENTICATOR.lower() == 'snowflake_jwt':
             # Key pair authentication
             conn_params['authenticator'] = 'SNOWFLAKE_JWT'
-            conn_params['user'] = SNOWFLAKE_USER
-            if SNOWFLAKE_PRIVATE_KEY_FILE:
-                conn_params['private_key_file'] = SNOWFLAKE_PRIVATE_KEY_FILE
-                if SNOWFLAKE_PRIVATE_KEY_FILE_PWD:
-                    conn_params['private_key_file_pwd'] = SNOWFLAKE_PRIVATE_KEY_FILE_PWD
+            conn_params['user'] = settings.SNOWFLAKE_USER
+            if settings.SNOWFLAKE_PRIVATE_KEY_FILE:
+                conn_params['private_key_file'] = settings.SNOWFLAKE_PRIVATE_KEY_FILE
+                if settings.settings.SNOWFLAKE_PRIVATE_KEY_FILE_PWD:
+                    conn_params['private_key_file_pwd'] = settings.settings.SNOWFLAKE_PRIVATE_KEY_FILE_PWD
             else:
-                raise ValueError("SNOWFLAKE_PRIVATE_KEY_FILE is required for JWT authentication")
+                raise ValueError("settings.SNOWFLAKE_PRIVATE_KEY_FILE is required for JWT authentication")
 
-        elif SNOWFLAKE_AUTHENTICATOR.lower() == 'oauth_client_credentials':
+        elif settings.SNOWFLAKE_AUTHENTICATOR.lower() == 'oauth_client_credentials':
             # OAuth client credentials flow
             conn_params['authenticator'] = 'OAUTH_CLIENT_CREDENTIALS'
-            if SNOWFLAKE_OAUTH_CLIENT_ID and SNOWFLAKE_OAUTH_CLIENT_SECRET:
-                conn_params['oauth_client_id'] = SNOWFLAKE_OAUTH_CLIENT_ID
-                conn_params['oauth_client_secret'] = SNOWFLAKE_OAUTH_CLIENT_SECRET
-                if SNOWFLAKE_OAUTH_TOKEN_URL:
-                    conn_params['oauth_token_request_url'] = SNOWFLAKE_OAUTH_TOKEN_URL
+            if settings.SNOWFLAKE_OAUTH_CLIENT_ID and settings.SNOWFLAKE_OAUTH_CLIENT_SECRET:
+                conn_params['oauth_client_id'] = settings.SNOWFLAKE_OAUTH_CLIENT_ID
+                conn_params['oauth_client_secret'] = settings.SNOWFLAKE_OAUTH_CLIENT_SECRET
+                if settings.SNOWFLAKE_OAUTH_TOKEN_URL:
+                    conn_params['oauth_token_request_url'] = settings.SNOWFLAKE_OAUTH_TOKEN_URL
             else:
-                raise ValueError("SNOWFLAKE_OAUTH_CLIENT_ID and SNOWFLAKE_OAUTH_CLIENT_SECRET are required for OAuth")
+                raise ValueError("settings.SNOWFLAKE_OAUTH_CLIENT_ID and settings.SNOWFLAKE_OAUTH_CLIENT_SECRET are required for OAuth")
 
-        elif SNOWFLAKE_AUTHENTICATOR.lower() == 'oauth':
+        elif settings.SNOWFLAKE_AUTHENTICATOR.lower() == 'oauth':
             # OAuth with existing access token
             from config import SNOWFLAKE_TOKEN
             conn_params['authenticator'] = 'OAUTH'
@@ -162,10 +137,10 @@ class SnowflakeConnectorPool:
 
         else:
             # Default snowflake authentication
-            conn_params['user'] = SNOWFLAKE_USER
-            conn_params['password'] = SNOWFLAKE_PASSWORD
-            if not SNOWFLAKE_USER or not SNOWFLAKE_PASSWORD:
-                raise ValueError("SNOWFLAKE_USER and SNOWFLAKE_PASSWORD are required for default authentication")
+            conn_params['user'] = settings.SNOWFLAKE_USER
+            conn_params['password'] = settings.SNOWFLAKE_PASSWORD
+            if not settings.SNOWFLAKE_USER or not settings.SNOWFLAKE_PASSWORD:
+                raise ValueError("settings.SNOWFLAKE_USER and settings.SNOWFLAKE_PASSWORD are required for default authentication")
 
         return conn_params
 
@@ -176,7 +151,7 @@ class SnowflakeConnectorPool:
                 try:
                     conn_params = self._build_connection_params()
                     self._connection = snowflake.connector.connect(**conn_params)
-                    logger.info(f"Created new Snowflake connector connection to {SNOWFLAKE_ACCOUNT}")
+                    logger.info(f"Created new Snowflake connector connection to {settings.SNOWFLAKE_ACCOUNT}")
                 except Exception as e:
                     logger.error(f"Failed to create Snowflake connection: {str(e)}")
                     raise
@@ -218,7 +193,7 @@ def get_cache_key(operation: str, **kwargs) -> str:
 
 def get_from_cache(key: str) -> Optional[Any]:
     """Get value from cache thread-safely"""
-    if not ENABLE_CACHING or _cache is None:
+    if not settings.ENABLE_CACHING or _cache is None:
         return None
     with _cache_lock:
         return _cache.get(key)
@@ -226,7 +201,7 @@ def get_from_cache(key: str) -> Optional[Any]:
 
 def set_in_cache(key: str, value: Any) -> None:
     """Set value in cache thread-safely"""
-    if not ENABLE_CACHING or _cache is None:
+    if not settings.ENABLE_CACHING or _cache is None:
         return
     with _cache_lock:
         _cache[key] = value
@@ -234,7 +209,7 @@ def set_in_cache(key: str, value: Any) -> None:
 
 def clear_cache() -> None:
     """Clear the entire cache"""
-    if not ENABLE_CACHING or _cache is None:
+    if not settings.ENABLE_CACHING or _cache is None:
         return
     with _cache_lock:
         _cache.clear()
@@ -270,7 +245,7 @@ async def make_snowflake_request(
 ) -> dict[str, Any] | None:
     """Make a request to Snowflake API with connection pooling and caching"""
     # Use provided token or fall back to config
-    token = snowflake_token or SNOWFLAKE_TOKEN
+    token = snowflake_token or settings.SNOWFLAKE_TOKEN
 
     if not token:
         logger.error("SNOWFLAKE_TOKEN environment variable is required but not set")
@@ -291,7 +266,7 @@ async def make_snowflake_request(
         "Content-Type": "application/json"
     }
 
-    url = f"{SNOWFLAKE_BASE_URL}/{endpoint}"
+    url = f"{settings.SNOWFLAKE_BASE_URL}/{endpoint}"
 
     try:
         # Use throttling to avoid overwhelming the API
@@ -427,7 +402,7 @@ async def execute_snowflake_query(
     """Execute a SQL query against Snowflake and return results with caching"""
 
     # Route to appropriate connection method
-    if SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
+    if settings.SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
         if not SNOWFLAKE_CONNECTOR_AVAILABLE:
             logger.error("Snowflake connector method requested but snowflake-connector-python is not available")
             return []
@@ -462,9 +437,9 @@ async def execute_snowflake_query_api(
         payload = {
             "statement": sql,
             "timeout": 60,
-            "database": SNOWFLAKE_DATABASE,
-            "schema": SNOWFLAKE_SCHEMA,
-            "warehouse": SNOWFLAKE_WAREHOUSE,
+            "database": settings.SNOWFLAKE_DATABASE,
+            "schema": settings.SNOWFLAKE_SCHEMA,
+            "warehouse": settings.SNOWFLAKE_WAREHOUSE,
         }
 
         logger.info(f"Executing Snowflake query: {sql[:100]}...")  # Log first 100 chars of query
@@ -695,11 +670,11 @@ async def get_issue_labels(issue_ids: List[str], snowflake_token: Optional[str] 
 
         sql = f"""
         SELECT ISSUE, LABEL
-        FROM {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_LABEL_RHAI
+        FROM {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_LABEL_RHAI
         WHERE ISSUE IN ({ids_str}) AND LABEL IS NOT NULL
         """
 
-        if SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
+        if settings.SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
             rows = await execute_snowflake_query(sql, None, use_cache)
             # Connector method returns dictionaries already
             for row in rows:
@@ -764,12 +739,12 @@ async def get_issue_comments(issue_ids: List[str], snowflake_token: Optional[str
 
         sql = f"""
         SELECT ID, ISSUEID, ROLELEVEL, BODY, CREATED, UPDATED
-        FROM {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_COMMENT_NON_PII
+        FROM {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_COMMENT_NON_PII
         WHERE ISSUEID IN ({ids_str}) AND BODY IS NOT NULL
         ORDER BY ISSUEID, CREATED ASC
         """
 
-        if SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
+        if settings.SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
             rows = await execute_snowflake_query(sql, None, use_cache)
             # Connector method returns dictionaries already
             for row in rows:
@@ -904,18 +879,18 @@ async def get_issue_links(issue_ids: List[str], snowflake_token: Optional[str] =
             di.ISSUE_KEY as DESTINATION_KEY,
             si.SUMMARY as SOURCE_SUMMARY,
             di.SUMMARY as DESTINATION_SUMMARY
-        FROM {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUELINK_RHAI il
-        JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUELINKTYPE_RHAI ilt
+        FROM {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUELINK_RHAI il
+        JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUELINKTYPE_RHAI ilt
             ON il.LINKTYPE = ilt.ID
-        LEFT JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII si
+        LEFT JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII si
             ON il.SOURCE = si.ID
-        LEFT JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII di
+        LEFT JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII di
             ON il.DESTINATION = di.ID
         WHERE (il.SOURCE IN ({ids_str}) OR il.DESTINATION IN ({ids_str}))
         ORDER BY il.SOURCE, il.SEQUENCE
         """
 
-        if SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
+        if settings.SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
             rows = await execute_snowflake_query(sql, None, use_cache)
             # Connector method returns dictionaries already
             _process_links_rows(rows, sanitized_ids, links_data, use_dict_rows=True)
@@ -979,17 +954,17 @@ async def get_issue_status_changes(issue_ids: List[str], snowflake_token: Option
             old_status.pname as from_status,
             new_status.pname as to_status,
             CONCAT(old_status.pname, ' → ', new_status.pname) as status_transition
-        FROM {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_CHANGEGROUP_RHAI cg
-        JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_CHANGEITEM_NON_PII ci ON cg.id = ci.groupid
-        JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII ji ON cg.issueid = ji.id
-        LEFT JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUESTATUS_RHAI old_status ON ci.oldvalue = old_status.id
-        LEFT JOIN {SNOWFLAKE_DATABASE}.{SNOWFLAKE_SCHEMA}.JIRA_ISSUESTATUS_RHAI new_status ON ci.newvalue = new_status.id
+        FROM {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_CHANGEGROUP_RHAI cg
+        JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_CHANGEITEM_NON_PII ci ON cg.id = ci.groupid
+        JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUE_NON_PII ji ON cg.issueid = ji.id
+        LEFT JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUESTATUS_RHAI old_status ON ci.oldvalue = old_status.id
+        LEFT JOIN {settings.SNOWFLAKE_DATABASE}.{settings.SNOWFLAKE_SCHEMA}.JIRA_ISSUESTATUS_RHAI new_status ON ci.newvalue = new_status.id
         WHERE ci.field = 'status'
           AND ji.id IN ({ids_str})
         ORDER BY ji.issue_key, cg.created ASC
         """
 
-        if SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
+        if settings.SNOWFLAKE_CONNECTION_METHOD.lower() == "connector":
             rows = await execute_snowflake_query(sql, None, use_cache)
             # Connector method returns dictionaries already
             for row in rows:
@@ -1083,7 +1058,7 @@ async def get_issue_enrichment_data_concurrent(
 async def execute_queries_in_batches(
     queries: List[str],
     snowflake_token: Optional[str] = None,
-    batch_size: int = CONCURRENT_QUERY_BATCH_SIZE,
+    batch_size: int = settings.CONCURRENT_QUERY_BATCH_SIZE,
     use_cache: bool = True
 ) -> List[List[Dict[str, Any]]]:
     """Execute multiple SQL queries in concurrent batches"""
